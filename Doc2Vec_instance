@@ -1,0 +1,94 @@
+import pandas as pd
+import numpy as np
+import gensim
+from gensim.models import Doc2Vec
+import os
+import pandas as pd
+from nltk.corpus import stopwords
+from nltk.stem import PorterStemmer
+from textblob import TextBlob
+from gensim.test.utils import get_tmpfile
+
+# 加载模型
+TaggededDocument = gensim.models.doc2vec.TaggedDocument
+
+# 读数据
+df = pd.read_csv('.../InternetRumor/text.tsv', sep='\t', header=None)
+df.columns = ['ID', 'label', 'statement', 'subject', 'speaker', 'job title', 'state info', 'party affiliation', 'barely true', 'false', 'half true', 'mostly true', 'pants on fire', 'context']
+print(df.head(10))
+
+
+# # 读取列
+# def get_text(string):
+#     df = pd.read_csv('C:/Users/Bill/PycharmProjects/InternetRumor/text.tsv', sep='\t', header=None)
+#     unlabeled_df = list(df[string])
+#     print(unlabeled_df.head(10))
+#     return unlabeled_df
+
+
+# statement 列的预处理
+def pre_doc(string):
+    # 1.Convert all to lowercase
+    df[string] = df[string].apply(lambda sen: " ".join(x.lower() for x in str(sen).split()))
+
+    # 2.Remove punctuation
+    df[string] = df[string].str.replace('[^\w\s]', '')
+
+    # 3.Remove stop words
+    stop = stopwords.words('english')
+    df[string] = df[string].apply(lambda sen: " ".join(x for x in str(sen).split() if x not in stop))
+
+    # 4.Word spelling correction
+    # correction = df[string][:len(df[string])].apply(lambda x: str(TextBlob(x).correct()))
+    # print("The result of word recorrection:\n", correction)
+    # print("*************************************************")
+
+    # 5.Stemming
+    st = PorterStemmer()
+    stem = df[string][:len(df[string])].apply(lambda x: " ".join([st.stem(word) for word in str(x).split()]))
+    print(stem, "\n*********************** Ending **************************")
+    return stem
+
+
+# 粘贴不同的列
+def add(df1, df2, df3):
+    df1 = pd.DataFrame(df1)
+    df2 = pd.DataFrame(df2)
+    df3 = pd.DataFrame(df3)
+    new_df = pd.concat([df1, df2, df3], axis=1)
+    return new_df
+
+
+# Doc2Vec 输入格式转化
+def d2v_type(pre_doc):
+    doc_train = []
+    for i, text in enumerate(pre_doc):
+        word_list = text.split(' ')
+        length = len(word_list)
+        word_list[length-1] = word_list[length-1].strip
+        document = TaggededDocument(word_list, tags=[i])
+        doc_train.append(document)
+    return doc_train
+
+
+# 加载Doc2Vec模型并开始训练
+def d2v_train(doc_train, vector_size=100):
+    model = Doc2Vec(doc_train, window=3, vector_size=vector_size, sample=1e-3, nagative=5, workers=4)
+    model.train(doc_train, total_examples=model.corpus_count, epochs=5)
+    model_name = 'doc2vec_model'
+    model_path = "C:/Users/Bill/PycharmProjects/InternetRumor/doc2vec_model.bin"
+    model.save(model_path)
+    return model
+
+
+# 显示处理后的statement
+b = pre_doc("statement")
+c = d2v_type(b)
+# print(c)
+
+# statement 向量化实例
+model_dm = d2v_train(c)
+strl = u'Says the Annies List political group supports third-trimester abortions on demand.'
+test_text = strl.split(' ')
+inferred_vector = model_dm.infer_vector(doc_words=test_text, alpha=0.025, steps=500)
+print(inferred_vector)
